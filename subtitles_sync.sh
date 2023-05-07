@@ -1,84 +1,76 @@
 #!/bin/zsh
 
+setopt null_glob
+
 clear
 RED='\033[0;31m'
-echo "Please enter the file path:"
+echo "Please enter the absolute file path:"
 NOCOLOR='\033[0m'
 read file_path
-cd $file_path
+cd "$file_path"
 dir_name=$(echo $file_path | awk -F/ '{print $NF}')
+a=$(ls -l 2>/dev/null | grep -v '^total' | wc -l)
 
-# echo $dir_name
 if [ -d "$file_path/Subs" ]; then
-   cd "$file_path""/Subs"
-   a=$(ls -l | grep -v '^total' | wc -l)
-   echo $a
+    cd "$file_path/Subs"
+    if find . -maxdepth 1 -type d ! -name '.*' | grep -q .; then
+        echo "Subdirectories found!"
+        original_dir=$(pwd) # Save the original working directory
+        for sub_dir in $(find . -maxdepth 1 -type d ! -name '.*'); do
+            echo "Current directory: $sub_dir"
+            cd "$sub_dir"
+
+            # Find the .srt file with the lowest prefix and rename it
+            srt_file=$(ls *_English.srt 2>/dev/null | sort -t _ -k1.1n | head -1)
+            if [[ -n $srt_file ]]; then
+                new_file="${sub_dir:2}.srt"
+                mv "$srt_file" "$new_file"
+                echo "File $srt_file renamed to $new_file"
+
+                # Delete the non-renamed .srt files
+                for remaining_srt in *_English.srt; do
+                    rm "$remaining_srt"
+                    echo "Deleted $remaining_srt"
+                done
+
+                # Move the processed .srt file one directory up
+                mv "$new_file" ..
+                echo "Moved $new_file one directory up"
+            else
+                echo "No .srt files found in $sub_dir"
+            fi
+
+            cd "$original_dir" # Change back to the original working directory
+
+            # Erase the empty folder
+            rmdir "$sub_dir" 2>/dev/null && echo "Deleted empty folder: $sub_dir"
+        done
+
+        # Move all the processed *.srt files to one directory above
+        mv *.srt "$file_path"
+        echo "Moved all processed *.srt files one directory above"
+
+        # Delete the /Subs folder
+        cd ..
+        rm -r Subs && echo "Deleted /Subs folder"
+
+    else
+        echo "No subdirectories found!"
+        srt_file=$(ls *_English.srt 2>/dev/null | sort -t _ -k1.1n | head -1)
+        if [[ -n $srt_file ]]; then
+            new_file="${dir_name}.srt"
+            mv "$srt_file" "$new_file"
+            echo "File $srt_file renamed to $new_file"
+            mv "$new_file" "$file_path"
+            cd ..
+            rm -r Subs && echo "Deleted /Subs folder"
+        else
+            echo "No .srt files found!"
+        fi
+    fi
 else
     echo "Error: directory /Subs does not exist."
     exit 1
 fi
 
-for i in $(seq 1 9); do
-    min_prefix=0
-    min_file=""
-    episode_number=$(printf "%02d" $i)
-    new_dir=$(echo "$dir_name" | sed "s/S04/S04E$episode_number/")
-    cd $new_dir
-    for file in *_English.srt; do
-        prefix=${file%%_*}
-        if [[ -z $min_file || $prefix -lt $min_prefix ]]; then
-            min_prefix=$prefix
-            min_file=$file
-        fi
-    done
-
-    for file in *_English.srt; do
-        if [[ $file != $min_file ]]; then
-            mv $file $file.bak
-            if [[ -n $min_file ]]; then
-                # cp $min_file $new_dir.srt
-                   mv $min_file $new_dir.srt
-                   rm *.bak
-                   mv *.srt ../
-            fi
-        fi
-    done
-    cd ..
-done
-
-
-for i in $(seq 10 $a); do
-    min_prefix=0
-    min_file=""
-    episode_number=$(printf "%02d" $i)
-    new_dir=$(echo "$dir_name" | sed "s/S04/S04E$episode_number/")
-    cd $new_dir
-    for file in *_English.srt; do
-        prefix=${file%%_*}
-        if [[ -z $min_file || $prefix -lt $min_prefix ]]; then
-            min_prefix=$prefix
-            min_file=$file
-        fi
-    done
-
-    for file in *_English.srt; do
-        if [[ $file != $min_file ]]; then
-            mv $file $file.bak
-            if [[ -n $min_file ]]; then
-                # cp $min_file $new_dir.srt
-                mv $min_file $new_dir.srt
-                rm *.bak
-                mv *.srt ../
-            fi
-        fi
-    done
-    cd ..
-    ls -lrt
-    rmdir * 2>/dev/null
-    mv *.srt ../
-done
-cd ..
-# rmdir --ignore-fail-on-non-empty Subs
-rm -r Subs
-rm *.txt
-
+echo "Current working directory: $(pwd -P)"
